@@ -1,23 +1,48 @@
 import { generateMap } from './map.js';
 import { Renderer, TILE } from './renderer.js';
+import { Player } from './player.js';
 
 const canvas = document.getElementById('game');
 const R = new Renderer(canvas);
-const map = generateMap();
 
-// Temporary: show entire map with all tiles visible
-const allVisible = new Set();
-for (let y = 0; y < map.height; y++)
-  for (let x = 0; x < map.width; x++)
-    allVisible.add(y * map.width + x);
+let map = generateMap();
+let player = new Player(map.rooms[0].cx, map.rooms[0].cy);
+player.computeFov(map);
 
-// Center camera on first room
-const cam = { x: map.rooms[0].cx * TILE - canvas.width / 2, y: map.rooms[0].cy * TILE - canvas.height / 2 };
+// --- Input ---
+const MOVE = {
+  ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0],
+  w: [0,-1], s: [0,1], a: [-1,0], d: [1,0],
+};
+const queue = [];
+const held = {};
+document.addEventListener('keydown', e => {
+  if (held[e.key]) return;
+  held[e.key] = true;
+  queue.push(e.key);
+  e.preventDefault();
+});
+document.addEventListener('keyup', e => { held[e.key] = false; });
 
+function handleInput() {
+  while (queue.length) {
+    const key = queue.shift();
+    const dir = MOVE[key];
+    if (!dir) continue;
+    const result = player.tryMove(dir[0], dir[1], map, []);
+    if (result) { player.computeFov(map); return; }
+  }
+}
+
+// --- Render ---
 function loop() {
+  handleInput();
   R.clear();
-  R.drawMap(map, cam.x, cam.y, allVisible, allVisible);
-  R.text(10, 10, 'Dungeon generated — Step 1 complete', '#4fc3f7', 16);
+  const camX = player.x * TILE - canvas.width / 2 + TILE / 2;
+  const camY = player.y * TILE - canvas.height / 2 + TILE / 2;
+  R.drawMap(map, camX, camY, player.fov, player.seen);
+  R.drawEntity(player.x, player.y, '#4fc3f7', camX, camY, '@');
+  R.text(10, 10, `HP: ${player.hp}/${player.maxHp}`, '#4caf50', 14);
   requestAnimationFrame(loop);
 }
 loop();
